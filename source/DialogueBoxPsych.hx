@@ -23,7 +23,6 @@ using StringTools;
 typedef DialogueCharacterFile = {
 	var image:String;
 	var dialogue_pos:String;
-	var no_antialiasing:Bool;
 
 	var animations:Array<DialogueAnimArray>;
 	var position:Array<Float>;
@@ -50,7 +49,6 @@ typedef DialogueLine = {
 	var text:Null<String>;
 	var boxState:Null<String>;
 	var speed:Null<Float>;
-	var sound:Null<String>;
 }
 
 class DialogueCharacter extends FlxSprite
@@ -69,8 +67,7 @@ class DialogueCharacter extends FlxSprite
 	public var startingPos:Float = 0; //For center characters, it works as the starting Y, for everything else it works as starting X
 	public var isGhost:Bool = false; //For the editor
 	public var curCharacter:String = 'bf';
-	public var skiptimer = 0;
-	public var skipping = 0;
+
 	public function new(x:Float = 0, y:Float = 0, character:String = null)
 	{
 		super(x, y);
@@ -81,9 +78,6 @@ class DialogueCharacter extends FlxSprite
 		reloadCharacterJson(character);
 		frames = Paths.getSparrowAtlas('dialogue/' + jsonFile.image);
 		reloadAnimations();
-
-		antialiasing = ClientPrefs.globalAntialiasing;
-		if(jsonFile.no_antialiasing == true) antialiasing = false;
 	}
 
 	public function reloadCharacterJson(character:String) {
@@ -91,13 +85,13 @@ class DialogueCharacter extends FlxSprite
 		var rawJson = null;
 
 		#if MODS_ALLOWED
-		var path:String = Paths.modFolders(characterPath);
+		var path:String = Paths.mods(characterPath);
 		if (!FileSystem.exists(path)) {
-			path = SUtil.getPath() + Paths.getPreloadPath(characterPath);
+			path = Paths.getPreloadPath(characterPath);
 		}
 
 		if(!FileSystem.exists(path)) {
-			path = SUtil.getPath() + Paths.getPreloadPath('images/dialogue/' + DEFAULT_CHARACTER + '.json');
+			path = Paths.getPreloadPath('images/dialogue/' + DEFAULT_CHARACTER + '.json');
 		}
 		rawJson = File.getContent(path);
 
@@ -131,13 +125,6 @@ class DialogueCharacter extends FlxSprite
 				leAnim = arrayAnims[FlxG.random.int(0, arrayAnims.length-1)];
 			}
 		}
-
-		if(dialogueAnimations.exists(leAnim) &&
-		(dialogueAnimations.get(leAnim).loop_name == null ||
-		dialogueAnimations.get(leAnim).loop_name.length < 1 ||
-		dialogueAnimations.get(leAnim).loop_name == dialogueAnimations.get(leAnim).idle_name)) {
-			playIdle = true;
-		}
 		animation.play(playIdle ? leAnim + IDLE_SUFFIX : leAnim, false);
 
 		if(dialogueAnimations.exists(leAnim)) {
@@ -169,7 +156,6 @@ class DialogueBoxPsych extends FlxSpriteGroup
 
 	public var finishThing:Void->Void;
 	public var nextDialogueThing:Void->Void = null;
-	public var skipDialogueThing:Void->Void = null;
 	var bgFade:FlxSprite = null;
 	var box:FlxSprite;
 	var textToType:String = '';
@@ -180,8 +166,6 @@ class DialogueBoxPsych extends FlxSpriteGroup
 	var offsetPos:Float = -600;
 
 	var textBoxTypes:Array<String> = ['normal', 'angry'];
-	
-	var curCharacter:String = "";
 	//var charPositionList:Array<String> = ['left', 'center', 'right'];
 
 	public function new(dialogueList:DialogueFile, ?song:String = null)
@@ -249,10 +233,12 @@ class DialogueBoxPsych extends FlxSpriteGroup
 			var x:Float = LEFT_CHAR_X;
 			var y:Float = DEFAULT_CHAR_Y;
 			var char:DialogueCharacter = new DialogueCharacter(x + offsetPos, y, individualChar);
+
 			char.setGraphicSize(Std.int(char.width * DialogueCharacter.DEFAULT_SCALE * char.jsonFile.scale));
 			char.updateHitbox();
+			char.antialiasing = ClientPrefs.globalAntialiasing;
 			char.scrollFactor.set();
-			char.alpha = 0.00001;
+			char.alpha = 0;
 			add(char);
 
 			var saveY:Bool = false;
@@ -267,8 +253,6 @@ class DialogueBoxPsych extends FlxSpriteGroup
 					x = FlxG.width - char.width + RIGHT_CHAR_X;
 					char.x = x - offsetPos;
 			}
-			x += char.jsonFile.position[0];
-			y += char.jsonFile.position[1];
 			char.x += char.jsonFile.position[0];
 			char.y += char.jsonFile.position[1];
 			char.startingPos = (saveY ? y : x);
@@ -280,32 +264,13 @@ class DialogueBoxPsych extends FlxSpriteGroup
 	public static var DEFAULT_TEXT_Y = 430;
 	var scrollSpeed = 4500;
 	var daText:Alphabet = null;
-	var ignoreThisFrame:Bool = true; //First frame is reserved for loading dialogue images
 	override function update(elapsed:Float)
 	{
-		if(ignoreThisFrame) {
-			ignoreThisFrame = false;
-			super.update(elapsed);
-			return;
-		}
-
 		if(!dialogueEnded) {
 			bgFade.alpha += 0.5 * elapsed;
 			if(bgFade.alpha > 0.5) bgFade.alpha = 0.5;
 
-		        #if android
-                        var justTouched:Bool = false;
-
-		        for (touch in FlxG.touches.list)
-		        {
-			        if (touch.justPressed)
-			        {
-				        justTouched = true;
-			        }
-		        }
-		        #end
-
-			if(PlayerSettings.player1.controls.ACCEPT #if android || justTouched #end) {
+			if(PlayerSettings.player1.controls.ACCEPT) {
 				if(!daText.finishedText) {
 					if(daText != null) {
 						daText.killTheTimer();
@@ -315,10 +280,6 @@ class DialogueBoxPsych extends FlxSpriteGroup
 					}
 					daText = new Alphabet(DEFAULT_TEXT_X, DEFAULT_TEXT_Y, textToType, false, true, 0.0, 0.7);
 					add(daText);
-					
-					if(skipDialogueThing != null) {
-						skipDialogueThing();
-					}
 				} else if(currentText >= dialogueList.dialogue.length) {
 					dialogueEnded = true;
 					for (i in 0...textBoxTypes.length) {
@@ -379,13 +340,13 @@ class DialogueBoxPsych extends FlxSpriteGroup
 									if(char.x < char.startingPos + offsetPos) char.x = char.startingPos + offsetPos;
 								case 'center':
 									char.y += scrollSpeed * elapsed;
-									if(char.y > char.startingPos + FlxG.height) char.y = char.startingPos + FlxG.height;
+									if(char.y > FlxG.height + 50) char.y = FlxG.height + 50;
 								case 'right':
 									char.x += scrollSpeed * elapsed;
 									if(char.x > char.startingPos - offsetPos) char.x = char.startingPos - offsetPos;
 							}
 							char.alpha -= 3 * elapsed;
-							if(char.alpha < 0.00001) char.alpha = 0.00001;
+							if(char.alpha < 0) char.alpha = 0;
 						} else {
 							switch(char.jsonFile.dialogue_pos) {
 								case 'left':
@@ -467,7 +428,7 @@ class DialogueBoxPsych extends FlxSpriteGroup
 		if(curDialogue.boxState == null) curDialogue.boxState = 'normal';
 		if(curDialogue.speed == null || Math.isNaN(curDialogue.speed)) curDialogue.speed = 0.05;
 
-		var animName:String = curDialogue.boxState;
+		var animName:String = curDialogue.expression;
 		var boxType:String = textBoxTypes[0];
 		for (i in 0...textBoxTypes.length) {
 			if(textBoxTypes[i] == animName) {
@@ -506,7 +467,6 @@ class DialogueBoxPsych extends FlxSpriteGroup
 		}
 
 		textToType = curDialogue.text;
-		Alphabet.setDialogueSound(curDialogue.sound);
 		daText = new Alphabet(DEFAULT_TEXT_X, DEFAULT_TEXT_Y, textToType, false, true, curDialogue.speed, 0.7);
 		add(daText);
 
@@ -529,12 +489,11 @@ class DialogueBoxPsych extends FlxSpriteGroup
 
 	public static function parseDialogue(path:String):DialogueFile {
 		#if MODS_ALLOWED
-		if(FileSystem.exists(path))
-		{
-			return cast Json.parse(File.getContent(path));
-		}
+		var rawJson = File.getContent(path);
+		#else
+		var rawJson = Assets.getText(path);
 		#end
-		return cast Json.parse(Assets.getText(path));
+		return cast Json.parse(rawJson);
 	}
 
 	public static function updateBoxOffsets(box:FlxSprite) { //Had to make it static because of the editors

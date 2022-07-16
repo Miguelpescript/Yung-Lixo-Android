@@ -20,12 +20,6 @@ typedef StageFile = {
 	var boyfriend:Array<Dynamic>;
 	var girlfriend:Array<Dynamic>;
 	var opponent:Array<Dynamic>;
-	var hide_girlfriend:Bool;
-
-	var camera_boyfriend:Array<Float>;
-	var camera_opponent:Array<Float>;
-	var camera_girlfriend:Array<Float>;
-	var camera_speed:Null<Float>;
 }
 
 class StageData {
@@ -51,8 +45,8 @@ class StageData {
 					stage = 'school';
 				case 'thorns':
 					stage = 'schoolEvil';
-				case 'ugh' | 'guns' | 'stress':
-					stage = 'tank';
+				case 'potency' | 'big-boy':
+					stage = 'quarto';
 				default:
 					stage = 'stage';
 			}
@@ -60,34 +54,23 @@ class StageData {
 			stage = 'stage';
 		}
 
-		var stageFile:StageFile = getStageFile(stage);
-		if(stageFile == null) { //preventing crashes
-			forceNextDirectory = '';
-		} else {
-			forceNextDirectory = stageFile.directory;
-		}
+		forceNextDirectory = getStageFile(stage).directory;
 	}
 
 	public static function getStageFile(stage:String):StageFile {
 		var rawJson:String = null;
-		var path:String = SUtil.getPath() + Paths.getPreloadPath('stages/' + stage + '.json');
+		var path:String = Paths.getPreloadPath('stages/' + stage + '.json');
 
 		#if MODS_ALLOWED
-		var modPath:String = Paths.modFolders('stages/' + stage + '.json');
+		var modPath:String = Paths.mods('stages/' + stage + '.json');
 		if(FileSystem.exists(modPath)) {
 			rawJson = File.getContent(modPath);
-		} else if(FileSystem.exists(path)) {
+		} else {
 			rawJson = File.getContent(path);
 		}
 		#else
-		if(Assets.exists(path)) {
-			rawJson = Assets.getText(path);
-		}
+		rawJson = Assets.getText(path);
 		#end
-		else
-		{
-			return null;
-		}
 		return cast Json.parse(rawJson);
 	}
 }
